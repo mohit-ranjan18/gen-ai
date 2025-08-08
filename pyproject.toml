@@ -1,0 +1,11 @@
+[project]
+name = "adk"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.116.1",
+    "google-adk>=1.9.0",
+    "uvicorn[standard]>=0.35.0",
+]

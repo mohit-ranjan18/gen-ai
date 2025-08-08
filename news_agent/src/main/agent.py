@@ -1,17 +1,13 @@
-import os
-import asyncio
-from typing import Optional
 from google.adk.agents import Agent
 # from google.adk.models.lite_llm import LiteLlm # For multi-model support
 from google.adk.sessions import InMemorySessionService,Session
 from google.adk.runners import Runner
 from dotenv import load_dotenv
-from google.adk.agents import LlmAgent
-from google.genai.types import Part, Content
 from google.genai import types
 from src.main.prompts import NEWS_RESULT_AGENT_PROMPT
 from google.adk.tools.agent_tool import AgentTool
 from src.main.sub_agents.agent import web_search_agent
+# from tools import fetch_preferences
 
 # https://chatgpt.com/share/687bef11-b550-8003-8292-eb44ef000c9b
 
@@ -24,13 +20,85 @@ logging.basicConfig(level=logging.ERROR)
 
 load_dotenv()
 
+import requests
+
+
+from pydantic import BaseModel
+from typing import List, Dict, Union
+from datetime import datetime
+
+
+class PreferenceNewsItem(BaseModel):
+    name: str
+    description: str
+    datetime: float  # or use datetime if it's converted
+    status: str
+    news: List[str]
+
+
+class NewsFetchedResponse(BaseModel):
+    news_fetched: List[PreferenceNewsItem]
+
+
+def fetch_preferences() -> dict:
+    """
+    Fetch user preferences from the news hub API.
+
+    This method does not take any input.
+
+    Returns:
+        dict: Contains:
+            - 'status': str
+            - 'preferences': List[dict] with keys: 'name', 'description', 'datetime', 'status'
+
+    Raises:
+        requests.exceptions.RequestException: For network-related errors.
+        ValueError: If the response status is not 'success' or JSON can't be parsed.
+    """
+    url = "https://news-hub-be-dev.up.railway.app/v1/preference"
+
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+
+        status = data.get("status", "unknown")
+        if status != "success":
+            error_msg = data.get("message", "Unknown error from API")
+            raise ValueError(f"API Error: {error_msg}")
+
+        preferences_data = data.get("data", {}).get("preferences", [])
+
+        preferences = [
+            {
+                "name": pref.get("name"),
+                "description": pref.get("description"),
+                "datetime": pref.get("datetime"),
+                "status": pref.get("status")
+            }
+            for pref in preferences_data[:2]
+        ]
+
+        return {
+            "status": status,
+            "preferences": preferences
+        }
+
+    except requests.exceptions.RequestException as e:
+        print(f"Request failed: {e}")
+        raise
+    except (ValueError, KeyError, TypeError) as e:
+        print(f"Error parsing response: {e}")
+        raise
+
 root_agent = Agent(
     name="news_agent",
     model="gemini-2.0-flash",
+    # output_schema=NewsFetchedResponse,
     description="Gives latest info or best news using websearch agent",
     instruction=NEWS_RESULT_AGENT_PROMPT,
     # sub_agents=[sports_agent]
-    tools=[AgentTool(web_search_agent)]
+    tools=[fetch_preferences,AgentTool(web_search_agent)]
 )
 
 print(f"Agent '{root_agent.name}")
